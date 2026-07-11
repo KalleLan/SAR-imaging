@@ -1,0 +1,22 @@
+# Python / torchbp-kokeilut
+__pycache__/
+*.pyc
+.venv/
+
+# Mittausdata (iso binääridata ei repoon — käytä esim. erillistä levyä tai LFS:ää)
+*.bin
+*.npy
+*.h5
+
+# Vivado-generoidut (versioidaan vain Tcl + lähteet)
+*.jou
+*.log
+.Xil/
+
+# KiCad-varmuuskopiot
+*-backups/
+*.kicad_pcb-bak
+_autosave-*
+
+# macOS
+.DS_Store
