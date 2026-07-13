@@ -9,3 +9,4 @@ Käytännöt:
 - Vivado: vain Tcl + lähteet versioidaan, ei generoituja tiedostoja.
 - Mittausdata (.bin/.npy/.h5) ei koskaan repoon.
 - Kieli: dokumentaatio suomeksi, koodin kommentit ja muuttujat englanniksi.
+- Dokumenttien sijoittelu ja nimeäminen: noudata docs/README.md:n sääntöjä.

@@ -5,7 +5,7 @@
 | **Projekti** | SDR |
 | **Tyyppi** | Tehtävänanto (Claude Code, Zed) + imaging/-hakemiston suunnitelma |
 | **Päivitetty** | 2026-07-11 |
-| **Liittyy** | `START_sdr_rail-SAR.md` vaihe 0, `laskentakone_pystytys.md` |
+| **Liittyy** | [`10_START_sdr_rail-SAR.md`](../10_START_sdr_rail-SAR.md) vaihe 0, [`30_laskentakone_pystytys.md`](../30_laskentakone_pystytys.md) |
 
 ---
 
@@ -40,7 +40,7 @@ Suunnitteluperiaatteet:
 
 ## Tehtävänanto Claude Codelle (kopioi tästä alaspäin)
 
-Toteuta SAR-imaging-repoon `imaging/`-hakemisto, joka validoi torchbp-kirjaston kuvanmuodostus- ja autofokusketjun simuloidulla datalla. Tämä on projektin vaihe 0 (ks. `docs/START_sdr_rail-SAR.md`); onnistumiskriteeri on tarkennettu SAR-kuva datasta jota emme itse keränneet.
+Toteuta SAR-imaging-repoon `imaging/`-hakemisto, joka validoi torchbp-kirjaston kuvanmuodostus- ja autofokusketjun simuloidulla datalla. Tämä on projektin vaihe 0 (ks. `docs/10_START_sdr_rail-SAR.md`); onnistumiskriteeri on tarkennettu SAR-kuva datasta jota emme itse keränneet.
 
 ### Konteksti ja reunaehdot
 
@@ -77,7 +77,7 @@ Toteuta yllä kuvattu hakemistorakenne. Tarkennukset:
 
 ### Vaihe C — dokumentoi
 
-`imaging/README.md`: asennusjärjestys (viittaa `docs/laskentakone_pystytys.md`:ään ympäristön osalta), skriptien ajojärjestys ja kunkin PASS-kriteeri, torchbp API -muistiinpanot vaiheesta A, ja "known good" -osio johon kirjataan versiot ja ajopäivä kun ketju on ensimmäisen kerran mennyt läpi GPU-koneella.
+`imaging/README.md`: asennusjärjestys (viittaa `docs/30_laskentakone_pystytys.md`:ään ympäristön osalta), skriptien ajojärjestys ja kunkin PASS-kriteeri, torchbp API -muistiinpanot vaiheesta A, ja "known good" -osio johon kirjataan versiot ja ajopäivä kun ketju on ensimmäisen kerran mennyt läpi GPU-koneella.
 
 ### Työtapa
 
@@ -87,4 +87,5 @@ Toteuta yllä kuvattu hakemistorakenne. Tarkennukset:
 
 ## Muutosloki
 
+- **2026-07-13** — Ristiviittaukset korjattu numeroituihin tiedostonimiin.
 - **2026-07-11** — Ensimmäinen versio. imaging/-runko ja Claude Code -tehtävänanto (inventaario → toteutus → dokumentointi).

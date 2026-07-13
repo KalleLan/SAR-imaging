@@ -6,7 +6,7 @@
 | **Tyyppi** | Pystytysohje (laskentakone kuvanmuodostukseen) |
 | **Status** | Odottaa rautaa (GTX 1070 vapautuu RTX 5070 -päivityksessä) |
 | **Päivitetty** | 2026-07-11 |
-| **Liittyy** | `START_sdr_rail-SAR.md` vaihe 0, `POHJANTAHTI_lentava-SAR.md` (laskentarealiteetti) |
+| **Liittyy** | [`10_START_sdr_rail-SAR.md`](10_START_sdr_rail-SAR.md) vaihe 0, [`00_POHJANTAHTI_lentava-SAR.md`](00_POHJANTAHTI_lentava-SAR.md) (laskentarealiteetti) |
 
 ---
 
@@ -166,5 +166,6 @@ Kortin vaihdon muistilista: torchbp käännettävä uudelleen (arch tunnistetaan
 
 ## Muutosloki
 
+- **2026-07-13** — Ristiviittaukset korjattu numeroituihin tiedostonimiin.
 - **2026-07-13** — Lisätty rautaspeksi-osio (CPU/RAM/levy/virtalähde/BIOS-asetukset) ja GPU-päivityssuositus: käytetty RTX 3060 12GB (Ampere, cc 8.6, ~150–200 € käytettynä).
 - **2026-07-11** — Ensimmäinen versio. Kolmikko ajuri 560 / CUDA 12.6 / torch cu126 valittu Pascal-rajoitteen perusteella (PyTorch ≥ 2.8 pudotti sm_61:n cu128/cu129-wheeleistä). Validoidut versiot kirjataan tähän kun kone on pystyssä.
