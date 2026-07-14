@@ -243,6 +243,29 @@ build putoaa automaattisesti CPU-only-polulle ilman erillistä lippua tai
 ympäristömuuttujaa. Tämä on nyt todettu suoraan lähdekoodista, ei enää
 avoin kysymys.
 
+**Käytännön lisähuomio (todettu kokeilemalla, vaihe B):** Applen omalla
+Xcode Command Line Tools -clangilla käännös epäonnistuu
+`clang++: error: unsupported option '-fopenmp'` -virheeseen, koska
+`setup.py`:n `extra_compile_args`/`extra_link_args` sisältävät kovakoodatun
+`-fopenmp`-lipun (`csrc/cpu/*.cpp` käännetään aina OpenMP:llä), eikä Applen
+clang tue sitä ilman `-Xpreprocessor`-erikoiskäsittelyä jota `setup.py` ei
+tee. Homebrew'n GCC (`gcc-16`) tukee `-fopenmp`:ia, mutta linkitys
+epäonnistuu ajonaikaisesti (`symbol not found ... at::_ops::empty_like`),
+koska GCC:n libstdc++-ABI ei ole yhteensopiva virallisen pip-torch-wheelin
+(käännetty clangilla/libc++:lla) kanssa — tämä on juuri se
+ABI-yhteensopivuusvaroitus jonka `torch.utils.cpp_extension` itse tulostaa
+GCC:tä käytettäessä. **Toimiva yhdistelmä:** Homebrew'n LLVM/clang
+(`brew install llvm`, ei Applen oma) `CC`/`CXX`:nä ja Homebrew'n
+`python@3.12` (ei Xcoden mukana tuleva universal2-Python, jonka
+`-arch arm64 -arch x86_64` -liput GCC hylkää eikä Applen clang-kohtaiset
+`-iwithsysroot`-liput toimi muilla kääntäjillä). Tällä yhdistelmällä
+`pip install --no-build-isolation -e .` ja `torchbp.ops.backprojection_polar_2d`
+CPU:lla toimivat vahvistetusti tällä Macilla (ks. `imaging/scripts/01_smoke_cpu.py`
+ja `02_backprojection.py` tulokset). Tämä on ympäristökohtainen käytännön
+löydös, ei osa torchbp:n virallista dokumentaatiota — GPU-koneella (CUDA,
+Ubuntu) tätä ongelmaa ei odoteta esiintyvän, koska siellä käytetään
+`CUDAExtension`-polkua eikä Applen/Homebrew'n kääntäjäongelmia ole.
+
 ### Asennus
 
 ```bash
@@ -304,12 +327,27 @@ autofokus-kutsua, jos CUDA ei ole saatavilla (samaan tapaan kuin
 
 ## Seuraavat vaiheet
 
-Vaihe B (hakemistorunko: `sar_sim/`, `scripts/`, `tests/`) ja vaihe C
-(asennus-/ajojärjestys, PASS-kriteerit, "known good" -osio) suunnitellaan
-ja toteutetaan erikseen tämän jälkeen.
+Vaihe B (hakemistorunko: `sar_sim/`, `scripts/`, `tests/`) on toteutettu ja
+testattu tällä Macilla CPU:lla (ks. Muutosloki). Vaihe C — asennus-/
+ajojärjestyksen viimeistely tähän README:hen, tarkemmat PASS-kriteerit ja
+"known good" -osio kun ketju on ajettu GPU-koneella (mukaan lukien
+`03_autofocus.py`:n minimi-entropia-autofokus-osa, joka vaatii CUDA:n) —
+suunnitellaan ja toteutetaan erikseen tämän jälkeen.
 
 ## Muutosloki
 
+- **2026-07-15** — Vaihe B: `sar_sim/` (`geometry.py`, `point_targets.py`,
+  `errors.py`), `scripts/01_smoke_cpu.py`, `02_backprojection.py`,
+  `03_autofocus.py` ja `tests/test_sim.py` toteutettu. Range-compression-
+  resepti (`torch.fft.ifft`, `rvp=False`, Hamming-ikkuna, FFT-oversample)
+  kopioitu torchbp:n omasta testisuiteesta
+  (`tests/test_ffbp.py::TestFfbpDem._terrain_scene`), ei keksitty itse.
+  Koko ketju (pytest + kaikki kolme skriptiä) ajettu ja vahvistettu tällä
+  Macilla CPU:lla: `02_backprojection.py` PASS (9/9 maalia ≤ 1 solu),
+  `03_autofocus.py` SKIP CUDA:n puuttuessa (ei kaadu). torchbp käännettiin
+  paikallisesti testausta varten Homebrew'n LLVM-clangilla + Homebrew'n
+  `python@3.12`:lla — Applen oma clang ja Homebrew'n GCC eivät toimineet,
+  ks. "Käytännön lisähuomio" edellä.
 - **2026-07-15** — Vaihe A täydennys: PolarGrid-olion tarkka rakenne
   (kentät, yksiköt, `d0`:n ja `pos`:n koordinaattikonventio), torch-
   versiolukon tarkistus (ei pinnattu versio; CUDA 12.9 testattu vs.
