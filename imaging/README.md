@@ -243,28 +243,121 @@ build putoaa automaattisesti CPU-only-polulle ilman erillistä lippua tai
 ympäristömuuttujaa. Tämä on nyt todettu suoraan lähdekoodista, ei enää
 avoin kysymys.
 
-**Käytännön lisähuomio (todettu kokeilemalla, vaihe B):** Applen omalla
-Xcode Command Line Tools -clangilla käännös epäonnistuu
-`clang++: error: unsupported option '-fopenmp'` -virheeseen, koska
-`setup.py`:n `extra_compile_args`/`extra_link_args` sisältävät kovakoodatun
-`-fopenmp`-lipun (`csrc/cpu/*.cpp` käännetään aina OpenMP:llä), eikä Applen
-clang tue sitä ilman `-Xpreprocessor`-erikoiskäsittelyä jota `setup.py` ei
-tee. Homebrew'n GCC (`gcc-16`) tukee `-fopenmp`:ia, mutta linkitys
-epäonnistuu ajonaikaisesti (`symbol not found ... at::_ops::empty_like`),
-koska GCC:n libstdc++-ABI ei ole yhteensopiva virallisen pip-torch-wheelin
-(käännetty clangilla/libc++:lla) kanssa — tämä on juuri se
-ABI-yhteensopivuusvaroitus jonka `torch.utils.cpp_extension` itse tulostaa
-GCC:tä käytettäessä. **Toimiva yhdistelmä:** Homebrew'n LLVM/clang
-(`brew install llvm`, ei Applen oma) `CC`/`CXX`:nä ja Homebrew'n
-`python@3.12` (ei Xcoden mukana tuleva universal2-Python, jonka
-`-arch arm64 -arch x86_64` -liput GCC hylkää eikä Applen clang-kohtaiset
-`-iwithsysroot`-liput toimi muilla kääntäjillä). Tällä yhdistelmällä
-`pip install --no-build-isolation -e .` ja `torchbp.ops.backprojection_polar_2d`
-CPU:lla toimivat vahvistetusti tällä Macilla (ks. `imaging/scripts/01_smoke_cpu.py`
-ja `02_backprojection.py` tulokset). Tämä on ympäristökohtainen käytännön
-löydös, ei osa torchbp:n virallista dokumentaatiota — GPU-koneella (CUDA,
-Ubuntu) tätä ongelmaa ei odoteta esiintyvän, koska siellä käytetään
-`CUDAExtension`-polkua eikä Applen/Homebrew'n kääntäjäongelmia ole.
+### Käytännön Mac-toolchain-resepti (todettu kokeilemalla, vaihe B)
+
+Tämä osio on täsmällinen toistettava resepti, ei vain kuvaus — tarkoitus on
+ettei tätä tarvitse löytää uudestaan. Kolme perättäistä yritystä ja mitä
+kussakin tapahtui, sitten toimiva resepti täsmäversioin.
+
+**Yritys 1 — Applen oma Xcode Command Line Tools -clang (oletus, ei mitään
+erikoisasetuksia):** `pip install --no-build-isolation -e .` epäonnistuu
+käännösvaiheeseen, virhe toistuu jokaiselle `csrc/cpu/*.cpp`-tiedostolle:
+```
+clang++: error: unsupported option '-fopenmp'
+```
+Syy: `setup.py`:n `extra_compile_args`/`extra_link_args` sisältävät
+kovakoodatun `-fopenmp`-lipun (`csrc/cpu/*.cpp` käännetään aina
+OpenMP:llä), eikä Applen clang-kääre tue sitä ilman
+`-Xpreprocessor -fopenmp -lomp`-erikoiskäsittelyä, jota `setup.py` ei tee.
+
+**Yritys 2 — Homebrew'n GCC (`brew install gcc`, `CC=gcc-16 CXX=g++-16`)
+Xcoden mukana tulevalla system-Pythonilla (`/usr/bin/python3`,
+universal2-binääri):** käännös epäonnistuu heti:
+```
+g++-16: warning: this compiler does not support x86 ('-arch' option ignored)
+g++-16: error: unrecognized command-line option '-iwithsysroot/System/Library/Frameworks/System.framework/PrivateHeaders'
+```
+Syy: CPython:n oma sysconfig-käännöskokoonpano sisältää Apple-clang-
+spesifiset liput (`-arch arm64 -arch x86_64` universal2-buildia varten,
+`-iwithsysroot...`), joita GCC ei tunne.
+
+**Yritys 3 — Homebrew'n GCC + Homebrew'n `python@3.12`** (ei
+Apple-clang-spesifisiä sysconfig-lippuja): käännös **onnistuu**, mutta
+`import torchbp` kaatuu ajonaikaisesti:
+```
+ImportError: dlopen(.../torchbp/_C.abi3.so, 0x0002): symbol not found in flat namespace
+'__ZN2at4_ops10empty_like4callERKNS_6TensorESt8optionalIN3c1010ScalarTypeEES5_INS6_6LayoutEES5_INS6_6DeviceEES5_IbES5_INS6_12MemoryFormatEE'
+```
+Syy: Homebrew'n GCC linkkaa libstdc++:aa vasten, virallinen pip-torch-wheel
+on käännetty clangilla/libc++:lla — ABI ei täsmää. `torch.utils.cpp_extension`
+tulostaa tästä itse käännösvaiheessa varoituksen ("Your compiler (g++-16) is
+not compatible with the compiler Pytorch was built with... which is
+clang++ on darwin"), mutta build ei silti kaadu — vasta `import` paljastaa
+ongelman.
+
+**Toimiva resepti — Homebrew'n LLVM-clang + Homebrew'n `python@3.12`.**
+Täsmäversiot joilla tämä on vahvistettu tällä koneella (`arm64`,
+macOS/Darwin 25.5.0):
+
+| Työkalu | Versio | Tarkistuskomento |
+|---|---|---|
+| `llvm` (Homebrew) | 22.1.8 | `brew list --versions llvm` |
+| `python@3.12` (Homebrew) | 3.12.13_4 (Python 3.12.13) | `brew list --versions python@3.12` |
+| `gcc` (Homebrew, jäi lopulta tarpeettomaksi) | 16.1.0 | `brew list --versions gcc` |
+| torch (pip, tässä ympäristössä) | 2.13.0 | `pip show torch` |
+
+Asennus- ja käännöskomennot:
+```bash
+brew install llvm python@3.12
+# (brew install libomp EI ole tarpeen erikseen: llvm-formula sisältää oman
+#  libomp.dylib:nsa ja omp.h:nsa, ks. alla.)
+
+/opt/homebrew/bin/python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools   # setuptools >= 64 (PEP 660 editable-tuki)
+pip install torch numpy scipy matplotlib pytest expecttest
+
+cd <torchbp-klooni>
+export CC=/opt/homebrew/opt/llvm/bin/clang
+export CXX=/opt/homebrew/opt/llvm/bin/clang++
+export LDFLAGS="-L/opt/homebrew/opt/llvm/lib -Wl,-rpath,/opt/homebrew/opt/llvm/lib"
+export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+pip install --no-build-isolation -e .
+```
+
+Jos `CC`/`CXX` jätetään asettamatta tässä vaiheessa, pip käyttää
+oletuskääntäjää (`/usr/bin/clang++`, Yritys 1:n virhe) tai mitä tahansa
+ympäristön `CC`/`CXX` sattuu osoittamaan (esim. jäänyt Homebrew-GCC,
+Yritys 3:n virhe) — build ei tunnista automaattisesti oikeaa kääntäjää.
+
+**Ajonaikainen OpenMP-ristiriita (uusi löydös, ei pelkkä käännösongelma):**
+kun torchbp on käännetty edellä kuvatulla tavalla, pelkkä `import torchbp`
+toimii sellaisenaan, mutta minkä tahansa `torchbp.ops.*`-funktion
+kutsuminen (esim. `backprojection_polar_2d`) kaatuu tai varoittaa:
+```
+OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already initialized.
+OMP: Hint This means that multiple copies of the OpenMP runtime have been linked into the program...
+```
+Syy (varmistettu `otool -L`:lla): `torch/lib/libtorch_cpu.dylib` linkkaa
+oman pip-torch-wheelin mukana tulevan `@rpath/libomp.dylib`:n (tiedosto
+`<venv>/lib/python3.12/site-packages/torch/lib/libomp.dylib`), kun taas
+torchbp:n `_C.abi3.so` linkkaa Homebrew'n `libomp.dylib`:n absoluuttisella
+polulla `/opt/homebrew/opt/llvm/lib/libomp.dylib` — sama prosessi lataa
+kaksi eri OpenMP-runtime-kopiota. **Korjaus: aseta `DYLD_LIBRARY_PATH`
+ajettaessa** (ei riitä pelkkä `LDFLAGS` käännösvaiheessa) niin että torchin
+oma `@rpath`-haku ohjautuu samaan Homebrew-kopioon jonka torchbp jo
+käyttää:
+```bash
+export DYLD_LIBRARY_PATH="/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH"
+```
+Tämän jälkeen vain yksi `libomp.dylib`-kopio ladataan prosessiin eikä
+ristiriitaa synny. (Virheviestin ehdottama `KMP_DUPLICATE_LIB_OK=TRUE` on
+sen omien sanojen mukaan "unsafe, unsupported, undocumented workaround" —
+ei suositella, koska se voi hiljaisesti tuottaa vääriä tuloksia; oikea
+korjaus on yksi jaettu runtime, ei kahden olemassaolon salliminen.)
+
+Tällä täydellisellä reseptillä (kääntäjä + `DYLD_LIBRARY_PATH`)
+`torchbp.ops.backprojection_polar_2d` CPU:lla toimii vahvistetusti tällä
+Macilla — ks. `imaging/scripts/01_smoke_cpu.py` ja `02_backprojection.py`
+tulokset (molemmat PASS).
+
+Tämä on ympäristökohtainen käytännön löydös, ei osa torchbp:n virallista
+dokumentaatiota — GPU-koneella (CUDA, Ubuntu) tätä täsmällistä
+kääntäjäongelmaa ei odoteta, koska siellä käytetään `CUDAExtension`-polkua
+eikä Applen/Homebrew'n kääntäjäkirjoa ole. Sen sijaan Ubuntu-koneella on
+oma, rakenteeltaan analoginen riski (system-GCC:n ABI-yhteensopivuus
+cu126-wheelin kanssa) — ks. `docs/30_laskentakone_pystytys.md`, osio
+"Tunnetut sudenkuopat".
 
 ### Asennus
 
@@ -336,6 +429,17 @@ suunnitellaan ja toteutetaan erikseen tämän jälkeen.
 
 ## Muutosloki
 
+- **2026-07-15** — Käytännön Mac-toolchain-resepti täsmennetty täydellä
+  toistettavuudella: täsmäversiot (Homebrew `llvm` 22.1.8, `python@3.12`
+  3.12.13_4), asennus-/käännöskomennot, kolmen epäonnistuneen yrityksen
+  tarkat virheviestit (Apple clang `-fopenmp`, Homebrew GCC + system-Python
+  sysconfig-liput, Homebrew GCC + Homebrew Python ABI-symbolivirhe), ja
+  uusi löydös: ajonaikainen OpenMP-runtime-ristiriita
+  (`OMP: Error #15 ... already initialized`, koska pip-torch-wheel ja
+  torchbp linkkaavat kaksi eri `libomp.dylib`-kopiota) korjattuna
+  `DYLD_LIBRARY_PATH`:lla. Ks. myös `docs/30_laskentakone_pystytys.md`,
+  joka nyt kirjaa saman riskiluokan (kääntäjän ABI-yhteensopivuus) avoimeksi
+  tarkistuskohdaksi GPU-koneen `torchbp`-käännösvaiheelle.
 - **2026-07-15** — Vaihe B: `sar_sim/` (`geometry.py`, `point_targets.py`,
   `errors.py`), `scripts/01_smoke_cpu.py`, `02_backprojection.py`,
   `03_autofocus.py` ja `tests/test_sim.py` toteutettu. Range-compression-
@@ -347,7 +451,7 @@ suunnitellaan ja toteutetaan erikseen tämän jälkeen.
   `03_autofocus.py` SKIP CUDA:n puuttuessa (ei kaadu). torchbp käännettiin
   paikallisesti testausta varten Homebrew'n LLVM-clangilla + Homebrew'n
   `python@3.12`:lla — Applen oma clang ja Homebrew'n GCC eivät toimineet,
-  ks. "Käytännön lisähuomio" edellä.
+  ks. "Käytännön Mac-toolchain-resepti" edellä.
 - **2026-07-15** — Vaihe A täydennys: PolarGrid-olion tarkka rakenne
   (kentät, yksiköt, `d0`:n ja `pos`:n koordinaattikonventio), torch-
   versiolukon tarkistus (ei pinnattu versio; CUDA 12.9 testattu vs.

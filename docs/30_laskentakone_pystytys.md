@@ -5,7 +5,7 @@
 | **Projekti** | SDR |
 | **Tyyppi** | Pystytysohje (laskentakone kuvanmuodostukseen) |
 | **Status** | Odottaa rautaa (GTX 1070 vapautuu RTX 5070 -päivityksessä) |
-| **Päivitetty** | 2026-07-11 |
+| **Päivitetty** | 2026-07-15 |
 | **Liittyy** | [`10_START_sdr_rail-SAR.md`](10_START_sdr_rail-SAR.md) vaihe 0, [`00_POHJANTAHTI_lentava-SAR.md`](00_POHJANTAHTI_lentava-SAR.md) (laskentarealiteetti) |
 
 ---
@@ -130,6 +130,7 @@ ja kirjaa tämän dokumentin muutoslokiin validoitu kolmikko (ajuri x.y, nvcc 12
 - **Ajuri vs. toolkit -sekaannus:** `nvidia-smi` toimii ilman toolkitia; `nvcc` vaatii toolkitin. Molemmat pitää tarkistaa erikseen.
 - **GTX 970 varakorttina:** cc 5.2 toimii samalla pinolla, mutta torchbp on käännettävä uudelleen kortin vaihdon jälkeen (arch tunnistetaan käännöshetkellä paikallisesta GPU:sta).
 - **8 GB VRAM:** Forstén ajoi 3090 Ti:llä (24 GB). Vaiheen 0 simulaatiot mahtuvat 1070:een helposti; isommissa kuvissa pienennä gridiä tai pilko kuva — ffbp auttaa myös nopeudessa.
+- **GCC-versio vs. cu126-wheelin odottama kääntäjä — avoin tarkistuskohta, ei vielä ratkaisu.** Macilla (imaging/README.md, osio "Käytännön lisähuomio") löytyi, että Homebrew'n GCC ei ole ABI-yhteensopiva virallisen pip-torch-wheelin kanssa (linkitysvirhe ajonaikaisesti, ei käännösaikana — käännös näytti onnistuvan mutta `import torchbp` kaatui `symbol not found`-virheeseen), ja korjaus oli vaihtaa kääntäjää samaksi kuin millä torch-wheel on käännetty. Sama riski on olemassa Ubuntu-koneella: `build-essential`:in tuoma system-GCC:n versio (Ubuntu 24.04:ssä oletuksena GCC 13) ei välttämättä täsmää siihen kääntäjän ABI-versioon jota `cu126`-wheel odottaa. **Ennen kuin oletetaan vaiheen 6 `pip install --no-build-isolation -e .` -asennuksen onnistuvan suoraan:** tarkista `gcc --version` ja vertaa siihen mitä `python -c "import torch; print(torch.__config__.show())"` ilmoittaa torchin oman käännöskokoonpanon kääntäjästä/ABI:sta, ja jos `pip install --no-build-isolation -e .` -vaihe onnistuu käännöksessä mutta `import torchbp` kaatuu linkitys-/symbolivirheeseen (ei CUDA-virheeseen), epäile ensimmäisenä kääntäjän ABI-yhteensopivuutta äläkä esim. CUDA-toolkit-versiota. Kirjataan tähän ratkaisuna ja validoituna kääntäjäversiona kun kone on pystyssä ja `pytest tests/` on ajettu läpi (vaihe 6).
 
 ## Rautaspeksi (tavoite, ettei törmää seinään)
 
@@ -166,6 +167,7 @@ Kortin vaihdon muistilista: torchbp käännettävä uudelleen (arch tunnistetaan
 
 ## Muutosloki
 
+- **2026-07-15** — Lisätty "Tunnetut sudenkuopat" -osioon avoin tarkistuskohta: system-GCC:n ABI-yhteensopivuus cu126-wheelin kanssa on tarkistettava eksplisiittisesti torchbp:n käännösvaiheessa (vaihe 6), ei oletettava ongelmattomaksi — löydös peräisin Mac-buildin GCC/torch-ABI-ristiriidasta (ks. imaging/README.md).
 - **2026-07-13** — Ristiviittaukset korjattu numeroituihin tiedostonimiin.
 - **2026-07-13** — Lisätty rautaspeksi-osio (CPU/RAM/levy/virtalähde/BIOS-asetukset) ja GPU-päivityssuositus: käytetty RTX 3060 12GB (Ampere, cc 8.6, ~150–200 € käytettynä).
 - **2026-07-11** — Ensimmäinen versio. Kolmikko ajuri 560 / CUDA 12.6 / torch cu126 valittu Pascal-rajoitteen perusteella (PyTorch ≥ 2.8 pudotti sm_61:n cu128/cu129-wheeleistä). Validoidut versiot kirjataan tähän kun kone on pystyssä.
