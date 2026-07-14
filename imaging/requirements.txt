@@ -1,0 +1,15 @@
+# torch: ks. versio-/CUDA-ohjeet docs/30_laskentakone_pystytys.md:sta.
+# GPU-koneella (Ubuntu, GTX 1070, CUDA toolkit 12.6):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+# Macilla (kehitys, ei CUDAa): pip install torch riittaa.
+torch
+numpy
+scipy
+matplotlib
+pytest
+
+# torchbp asennetaan KASIN, ei pip-riippuvuutena - ks. imaging/README.md,
+# osio Asennus:
+#   git clone https://github.com/Ttl/torchbp.git
+#   cd torchbp
+#   pip install --no-build-isolation -e .
