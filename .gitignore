@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
+
+# imaging/: PNG:t ja välidata eivät mene gitiin (docs/tehtavat/2026-07-11_vaihe0_imaging_runko.md)
+imaging/results/
 
 # Mittausdata (iso binääridata ei repoon — käytä esim. erillistä levyä tai LFS:ää)
 *.bin
