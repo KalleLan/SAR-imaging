@@ -85,6 +85,49 @@ muoto `[nsweeps, 3]` (float32, metriä) — ei erillistä "platform"-luokkaa.
 Grid annetaan erillisenä `PolarGrid`/`CartesianGrid`-oliona
 (`torchbp/grid.py`) tai vastaavana dict-rakenteena.
 
+### PolarGrid-olion rakenne
+
+`torchbp/grid.py:25` (`class PolarGrid(Grid)`):
+
+```python
+PolarGrid(
+    r_range: Tuple[float, float],       # (r0, r1) metreinä, r1 > r0
+    theta_range: Tuple[float, float],   # (theta0, theta1) = sin(atsimuuttikulma), oltava [-1, 1]
+    nr: int,                             # range-binien lukumäärä
+    ntheta: int,                         # atsimuutti-binien lukumäärä
+)
+```
+
+- **Kentät:** vain `r_range`/`theta_range`/`nr`/`ntheta` (tallennettu sellaisenaan,
+  `dr`/`dtheta` laskettu ja cachettu: `dr=(r1-r0)/nr`, `dtheta=(theta1-theta0)/ntheta`).
+  **Ei origo-siirtymäkenttää** `PolarGrid`-oliossa itsessään — origo hoidetaan
+  `pos`-tensorin kautta (ks. alla).
+- **Yksiköt:** `r_range` metreinä. `theta_range` on **sin(kulma)**, ei radiaaneja
+  eikä asteita — `-1..1` vastaa 180°:n näkymää (docstring: `"theta represents sin
+  of angle (-1, 1 for 180 degree view)"`).
+- **`d0`-parametri** `backprojection_polar_2d`:ssä: docstringin mukaan "Zero range
+  correction". Lähdekoodissa (`torchbp/csrc/cpu/backproj.cpp:154`,
+  `sx = delta_r * (d + d0)`) `d0` on metrimääräinen vakiokorjaus joka **lisätään
+  geometrisesti laskettuun etäisyyteen** `d` ennen range-bin-indeksiksi
+  muuntamista — eli kiinteä kalibrointitermi (esim. kaapeliviive), ei origon
+  siirto grid-koordinaatistossa.
+- **`pos`-koordinaattikonventio:** pikselin sijainti grid-koordinaatistossa on
+  `x = r*sqrt(1-theta²)`, `y = r*theta`, `z = 0` (maanpinta-taso, ellei `dem`
+  annettu) — ks. `torchbp/csrc/cpu/backproj.cpp:82-83` ja koodikommentti rivillä
+  ~139: *"equals the Cartesian distance to (x, y, 0)... for a straight track on
+  the y axis"*. Etäisyys tutkaan lasketaan `d² = (x-pos_x)² + (y-pos_y)² +
+  pos_z²` (rivit 137-149), eli **`pos_z` on tutkan korkeus maanpinta-tasosta
+  (z=0)** — **z-akseli on "ylös"**, `x` on poikittaissuunta (ground-range) ja
+  `y` on kanoninen suora-rata-suunta (koodin oma kommentti olettaa radan
+  olevan y-akselilla, mikä täsmää tehtävänannon "suora rata Y-akselia pitkin"
+  -skenaarioon). Origon sijainti suhteessa rataan **ei ole kiinteä** —
+  `minimum_entropy_grad_autofocus` (`torchbp/autofocus.py:2685-2687`) keskittää
+  radan ennen kuvanmuodostusta: `origin = mean(pos, axis=0)`, `origin[:,2] = 0`,
+  `pos_centered = pos - origin` — eli grid-origo (0,0,0) asetetaan radan
+  x/y-keskiarvoon maanpinnalla, ja rata itse on tästä keskipisteestä siirtynyt
+  `pos_centered`-arvon verran. Oman simulaattorin kannattaa noudattaa samaa
+  konventiota (rata keskitetty origon ympärille, korkeus z-akselilla).
+
 **Minimi-entropia-autofokus** — `torchbp.autofocus`:
 
 ```python
@@ -182,6 +225,24 @@ kanssa pitää tarkistaa erikseen GPU-koneella asennusvaiheessa, ks.
 rakentaa myös CPU-only-torchia vasten, joten CPU-only-build on projektin
 itsensä tukema/testaama konfiguraatio.
 
+**Vahvistettu: Mac-build toimii ilman CUDAa, ei enää avoin kysymys.**
+`setup.py:39-44` (`get_extensions()`):
+
+```python
+use_cuda = os.getenv("USE_CUDA", "1") == "1"
+use_cuda = use_cuda and torch.cuda.is_available() and CUDA_HOME is not None
+extension = CUDAExtension if use_cuda else CppExtension
+```
+
+Kun `torch.cuda.is_available()` on `False` (Macilla aina, ei NVIDIA-GPU:ta) tai
+`CUDA_HOME` puuttuu, `use_cuda` on `False` ja käännin valitsee `CppExtension`:in,
+joka kääntää vain `csrc/*.cpp` + `csrc/cpu/*.cpp` -lähteet (`setup.py:85-93`);
+`csrc/cuda/*.cu` jätetään kokonaan pois käännöksestä. Eli
+`pip install --no-build-isolation -e .` **toimii sellaisenaan Macilla** —
+build putoaa automaattisesti CPU-only-polulle ilman erillistä lippua tai
+ympäristömuuttujaa. Tämä on nyt todettu suoraan lähdekoodista, ei enää
+avoin kysymys.
+
 ### Asennus
 
 ```bash
@@ -196,6 +257,39 @@ non-ABI-stabiileja libtorch-symboleita ja täytyy kääntää tarkalleen
 käytössä olevaa torch-versiota vasten. torchbp:tä **ei** lisätä
 `requirements.txt`:hen pip-riippuvuutena — se asennetaan manuaalisesti
 yllä kuvatulla tavalla.
+
+### Torch-versiolukko
+
+`pyproject.toml` (koko tiedosto on vain kommentti + `[build-system]`-lohko)
+sanoo eksplisiittisesti: *"torch is intentionally NOT listed here"* —
+torchia ei listata build-riippuvuutena juuri siksi ettei PEP 517
+build-isolation vetäisi sisään eri (uudempaa) torchia. `setup.py`:n
+`install_requires = ["torch", "numpy", "scipy"]` (rivi ~118) **ei pinnaa
+torch-versiota millään tavalla** — ei min-, max- eikä täsmäversiovaatimusta.
+
+Ainoa versioon reagoiva koodihaara on `setup.py:33`:
+`py_limited_api = Version(torch.__version__) >= Version("2.6.0")`, joka
+valitsee abi3-yhteensopivan käännöksen (`_C.abi3.so`) torch ≥ 2.6:lle vs.
+Python-versiokohtaisen nimen vanhemmille — tämä ei estä vanhempien
+torch-versioiden käyttöä, vain muuttaa käännetyn `.so`-tiedoston nimeämistä.
+
+**CUDA-versio:** `Readme.md:15` sanoo vain *"Tested with CUDA version
+12.9."* — tämä on kehittäjän ilmoittama testattu versio, ei pakotettu
+minimi- tai maksimivaatimus (ei versiotarkistusta koodissa). Ainoa CI-työ
+(`.github/workflows/docs.yml:35`) asentaa `torch`:n indeksistä
+`https://download.pytorch.org/whl/cpu` (versio lukitsematon, CI:n
+ajohetken uusin), eikä aja mitään CUDA-testejä.
+
+**Ristiriita/epävarmuus tehtävänannon ympäristölukkoon nähden:**
+`docs/30_laskentakone_pystytys.md` lukitsee CUDA toolkit **12.6** ja
+PyTorch cu126-wheelin (Pascal/sm_61-yhteensopivuuden vuoksi), kun taas
+torchbp on kehittäjän mukaan testattu CUDA **12.9**:llä. Koska torchbp:n
+lähdekoodi ei aseta mitään versiorajaa, tämä ei ole varmuudella este —
+mutta yhteensopivuutta CUDA 12.6:n kanssa **ei voida vahvistaa
+torchbp:n lähdekoodista**, ja se pitää todeta käytännössä GPU-koneen
+build-vaiheessa (`pytest tests/` ajon jälkeen, ks.
+`docs/30_laskentakone_pystytys.md`). Jos build tai testit epäonnistuvat
+CUDA 12.6:lla, tämä on ensimmäinen epäilty syy.
 
 ### Vaikutus scripts/01_smoke_cpu.py:n suunnitteluun
 
@@ -216,6 +310,13 @@ ja toteutetaan erikseen tämän jälkeen.
 
 ## Muutosloki
 
+- **2026-07-15** — Vaihe A täydennys: PolarGrid-olion tarkka rakenne
+  (kentät, yksiköt, `d0`:n ja `pos`:n koordinaattikonventio), torch-
+  versiolukon tarkistus (ei pinnattu versio; CUDA 12.9 testattu vs.
+  ympäristölukon CUDA 12.6 — vahvistamaton yhteensopivuus) ja
+  Mac-buildin CUDA-fallback vahvistettu `setup.py`:stä (ei enää avoin
+  kysymys). Sama klooni/commit `cf59c15fae5058382ff4e27b38e7a306c36b5a7f`
+  (ei uudempaa commitia origin/master:issa).
 - **2026-07-15** — Vaihe A: torchbp:n lähdekoodi inventoitu (commit
   `cf59c15fae5058382ff4e27b38e7a306c36b5a7f`), löydökset kirjattu tähän
   ennen toteutuskoodin kirjoittamista.
