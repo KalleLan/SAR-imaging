@@ -29,12 +29,10 @@ Halvin ja tärkein askel. Aja kuvanmuodostus + autofokus **simuloidulla tai valm
 
 ## Vaihe 1 — Rautaminimi (FMCW-tutka)
 
-Kaksi reittiä; valitse kynnyksen mukaan:
+**Päivitetty 2026-07-15, ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md`:** reitit A ja B eivät enää ole kaksi erillistä polkua — olemassa oleva Z7020+AD9361-SDR-kortti kattaa digitaalisen selkärangan molemmille, ja reitti B kutistuu RF-etupää-lisäkortiksi (chirp-PLL, PA, RX-suojaus, polarisaatiokytkentä) joka liittyy tähän korttiin. Perustelut ja avoimet suunnittelukohdat päätösmuistiossa.
 
-- **A) Valmiimpi lähtö (matalampi kynnys):** aloita valmiilla FMCW-modulilla tai evalboardilla (esim. coffee-can -tyyli tai TI mmWave -evalboard) todistaaksesi mittaus→data→kuva-ketjun omalla raudalla ennen oman kortin suunnittelua.
-- **B) Oma kortti (pohjantähden mukainen):** suunnittele FMCW-tutka ~6 GHz, kaista 300–500 MHz, PLL-sweep, +30 dBm PA, direct-conversion RX, 50 MHz ADC, Zynq 7020. Tämä on iso työ mutta juuri sinun FPGA/DSP-osaamisesi ydintä.
-
-Suositus: aja A ja B rinnakkain — A validoi ohjelmistoketjun oikealla mittausdatalla nopeasti, B on varsinainen lopputuote.
+- **A) Nopea validointi:** SDR-kortti sellaisenaan (natiivi AD9361-teho) riittää mittaus→data→kuva-ketjun todistamiseen ennen RF-etupään valmistumista.
+- **B) Oma RF-etupää (pohjantähden mukainen):** ~6 GHz, kaista 300–500 MHz, ulkoinen chirp-PLL syötettynä AD9361:n `RX_EXT_LO_IN`/`TX_EXT_LO_IN`-pinneihin, PA n. 24 dB lisävahvistuksella +30 dBm-tavoitteeseen (kortin natiivi TX ~6,5 dBm ei riitä yksin), RX-suojaus, direct-conversion (AD9361:n natiivi ominaisuus).
 
 **Huomioitavat sudenkuopat (Forsténin oppeja):**
 - TX-RX-vuoto: >50 dB eristys TX/RX-antennien välillä, muuten vastaanotin kyllästyy.
@@ -94,10 +92,12 @@ Isompi, ulkoinen kohde — edelleen kisko tai turntable, ei vielä lentoa.
 ## Avoimet kysymykset
 
 - Laskenta-alusta lopullisesti (MPS vs. pilvi vs. Hacklab-NVIDIA)?
-- Oma kortti heti vai evalboard-välivaihe (reitti A vs B)?
+- ~~Oma kortti heti vai evalboard-välivaihe (reitti A vs B)?~~ — ratkaistu 2026-07-15, ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md`.
+- RF-etupään komponenttivalinnat (chirp-PLL, PA) — avoinna, ks. sama päätösmuistio.
 - Kiskon pituus ja askelväli ensimmäistä olohuonemittausta varten?
 
 ## Muutosloki
 
 - **2026-07-11** — Ensimmäinen versio. Vaiheistus 0→4 (ohjelmisto → rauta → kisko → olohuone → piha) kirjattu. Laskenta-alusta merkitty avoimeksi kysymykseksi ratkaistavaksi vaiheessa 0.
 - **2026-07-11** — Siirretty GitHub-repoon `KalleLan/SAR-imaging` (`docs/`). Tiedostonimiin lisätty järjestysprefiksit (00/10/20), ristiviittaukset muutettu suhteellisiksi linkeiksi.
+- **2026-07-15** — Vaihe 1 päivitetty: olemassa oleva Z7020-AD9361-SDR-kortti kattaa digitaalisen selkärangan, reitti B kutistuu RF-etupää-lisäkortiksi. Ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md`.
