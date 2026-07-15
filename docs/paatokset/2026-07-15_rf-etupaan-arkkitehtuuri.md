@@ -17,6 +17,37 @@
 5. **Polarisaatioarkkitegia: "2 chirpiä, simultaani dual-RX"** — ei RF-kytkimiä, ei täysin simultaania 1-chirp-ratkaisua. Chirp 1 TX1A:lta (H) → RX1A+RX2A digitoivat samanaikaisesti (HH+HV); chirp 2 TX2A:lta (V) → RX1A+RX2A digitoivat samanaikaisesti (VH+VV). Kaikki neljä HH/HV/VH/VV-kombinaatiota saadaan kahdesta chirpistä yhden sijaan, ilman RF-kytkimiä.
 6. **Kaikki neljä suositeltua osaa (ADF4159, HMC431LP4E, SE5004L, SKY16603-632LF) ovat tavanomaisia kaupallisia telekom-/WLAN-komponentteja**, jotka löytyvät avoimesti Digikey/Mouser-jakelijasivuilta ilman ITAR/EAR-lippuja — matala export-riski verrattuna GaN-radar-PA-luokkaan.
 
+## Taajuuskonfliktin ratkaisu
+
+**Lähtökohta** (`../tehtavat/2026-07-15_rf-etupaan-taajuuskonflikti.md`): AD9361 Reference Manual (UG-570), "External LO" -osio, vahvistaa että EXT_LO-signaalin dokumentoitu tukialue on **140 MHz–8 GHz, kattaen RF-tune-taajuuden 70 MHz–4 GHz** — ei koko sisäisen synteesin 70 MHz–6 GHz -aluetta. Pohjantähden ~5,77 GHz -tavoite (EXT_LO ~11,3–11,9 GHz) on tämän dokumentoidun rajan ulkopuolella. Selvitettiin neljä kohtaa ennen skeema-/tilaustyötä.
+
+**1) Empiirinen näyttö EXT_LO:sta yli 4 GHz RF (yli 8 GHz LO) — ei löytynyt.**
+- Haut EngineerZonesta, AD9361-datasheet-lähteistä ja GitHub-koodihauista (`analogdevicesinc/linux`, `analogdevicesinc/libad9361-iio`) toistavat vain saman 70 MHz–4 GHz / 8 GHz-LO-rajan. Ei yhtään foorumiraporttia, GitHub-issueta tai julkaisua, jossa EXT_LO:ta olisi ajettu yli 8 GHz:n.
+- ADI:n oma virallinen ext-LO-referenssidesign löytyi: `analogdevicesinc/linux` → `arch/arm64/boot/dts/xilinx/zynqmp-zcu102-rev10-ad9361-fmcomms5-ext-lo-adf5355.dts` (FMCOMMS5, ADF5355 ulkoisena LO:na, `adi,power-up-frequency = 4800000000` → 4,8 GHz LO → 2,4 GHz RF). ADI:n oma esimerkki pysyy siis itsekin reilusti dokumentoidun rajan **sisällä** — ei vasta- eikä puoltoevidenssiä yli 4 GHz:n käytölle.
+- Yksi harhaanjohtava osuma tarkistettu ja hylätty: EngineerZone-ketju "Can't set AD9361 LO Freq above 4.29Ghz" (`ez.analog.com/linux-software-drivers/f/q-a/111617`) ei liity RF-karakterisointiin — kyse on PowerPC/big-endian-alustan ohjelmistobugista (`round_rate`-kutsu clk-ajurissa), ei taajuusrajasta.
+- Kaksi ketjua jäi sisällöltään vahvistamatta teknisen esteen takia (WebFetch-aikakatkaisu): `ez.analog.com/rf/wide-band-rf-transceivers/design-support/f/q-a/533783/ad9361-external-lo-configuration` ja `.../f/q-a/113021/internal-lo-of-ad9361`. **Avoin kohta, ei täytetty arvauksella.**
+- **Johtopäätös:** rajan ylitys on karakterisoimaton riski — ei todistettu toimivaksi eikä todistettu rikkoutuvaksi. Ei riittävä peruste tilata komponentteja tälle oletukselle.
+
+**2) SFCW-vaihtoehto — toimisi Vaihe 1:ssä (kisko), epäonnistuisi drone-vaiheessa.**
+- `10_START_sdr_rail-SAR.md` Vaihe 2 ("Kiskomekaniikka"): kiskovaihe on **step-stop-measure** — tutka pysähtyy joka mittauspisteessä. Tässä vaiheessa ei ole reaaliaikaista PRF/nopeus-sidontaa, joten SFCW:n askelmäärä × lukitusaika ei riko mitään ajallista rajoitetta kiskolla, vaikka täysi pyyhkäisy kestäisi kymmeniä millisekunteja.
+- `00_POHJANTAHTI...` antaa drone-vaiheen luvut ("PRF ↔ lentonopeus", "Look-angle/varjot"): ~2 km kantama-esimerkki, 10 m/s → λ/4-näyteväli vaatii PRF ≥ 800 Hz/pol, ×4 pol → 3,2 kHz → per-chirp-budjetti ~280–312 µs.
+- Oma laskelma (ei ulkoinen lähde): yksiselitteinen kantama Ru = c/(2Δf) ≥ 2 km → Δf ≤ 75 kHz. Askelmäärä N = B/Δf = 300 MHz / 75 kHz ≈ 4000 (500 MHz kaistalla ~6700). AD9361:n lukitusaika (hakutuloksista koottu, ei suoraan datasheet-PDF:stä varmistettu — keskisuuri luotettavuus): parhaimmillaan ~20 µs, tyypillisesti ~250 µs, VCO-kalibrointi mukana ~500 µs, fast-lock-taulukoilla jopa 1000 hyppyä/s (~1 ms/hyppy). Täysi N-askeleen pyyhkäisy: 4000×20 µs = 80 ms parhaassakin tapauksessa, tyypillisesti ~1 s — vs. ~280–312 µs budjetti.
+- **SFCW on n. 250–3500× liian hidas** kattamaan tarvittavan yksiselitteisen kantaman + kaistan drone-vaiheen näyteväli-budjetissa, myös optimistisimmalla lukitusaika-arviolla. Koska sama RF-kortti on tarkoitus siirtyä kiskolta droneen muuttumattomana (pohjantähti, "Mikä tästä siirtyy ilmaan"), arkkitehtuurin pitää toimia molemmissa vaiheissa — SFCW läpäisisi Vaihe 1:n mutta olisi arkkitehtuurivelkaa joka räjähtäisi käsiin drone-siirrossa.
+
+**3) Forstén — tärkein löydös: hän ei käytä AD9361:tä (tai vastaavaa integroitua transceiveria) chirp-/LO-polulla lainkaan.**
+- Luettu uudelleen hforsten.com/homemade-polarimetric-synthetic-aperture-radar-drone.html juuri tästä kulmasta. Hänen arkkitehtuurinsa on täysin diskreetti: PLL generoi pyyhkäisyn → vaihdeltava vaimennin → PA → antenni. RX-puolella lainaus: *"Part of the transmitted signal is coupled to the receiver mixer, where it's mixed together with the received reflected signal"* — osa TX-signaalista kytketään suoraan erilliseen, diskreettiin RX-mikseriin LO:ksi (self-mixing dechirp-on-receive), mikseri ilman image rejectionia, tuottaen matalataajuisen beat-signaalin joka vahvistetaan ja digitoidaan ADC:llä (50 MHz näytteistys). Zynq 7020 toimii hänellä puhtaasti digitaalisena prosessointipiirinä (FPGA+ARM, USB3-silta FT600:lla PC-yhteyteen) — **ei RF-transceiverina**. Ei mainintaa AD9361:stä, PlutoSDR:stä eikä muusta integroidusta RF-transceiveristä missään kohtaa TX/RX-RF-ketjua.
+- **Tämä väistää koko EXT_LO-rajakysymyksen kokonaan** — mikään komponentti hänen ketjussaan ei koskaan tarvitse minkään integroidun transceiverin dokumentoitua LO-tukea. Chirp-PLL:n LO menee suoraan diskreettiin mikseriin, ei transceiverin RF-tuloon.
+
+**4) Taajuuden laskeminen ≤4 GHz — kirjattu vaihtoehtona, ei ratkaistu tässä.**
+Jos kohdan 3 mukainen arkkitehtuurimuutos osoittautuu epäkäytännölliseksi, taajuuden laskeminen ≤4 GHz pitäisi nykyisen EXT_LO-arkkitehtuurin dokumentoidun tuen sisällä sellaisenaan. Isompi päätös (muuttaa pohjantähden ~6 GHz -valinnan perustetta: kuluttajakomponenttien saatavuus) — rajattu tämän tehtävän ulkopuolelle, kirjattu vain vaihtoehtona kuten tehtävänanto edellytti.
+
+### Suositus
+
+1. **Hylätään** "jatka ulkoisella LO:lla dokumentoidun rajan yli" ilman lisätodisteita — ei empiiristä näyttöä, karakterisoimaton riski juuri ennen tilaustyötä.
+2. **Hylätään** SFCW suorana korvaajana nykyiselle EXT_LO-arkkitehtuurille — toimisi kiskolla, epäonnistuisi räikeästi drone-vaiheessa, eikä sama kortti silloin siirtyisi muuttumattomana kuten pohjantähti edellyttää.
+3. **Suositellaan uutta, rajattua jatkoselvitystä** (oma tuleva tehtävänsä, ei ratkaistu tässä): voidaanko AD9361 jättää pois chirp-/dechirp-polulta Forsténin tapaan — ADF4159+HMC431-chirp suoraan diskreetin RX-mikserin LO:na, ja tuloksena syntyvä matala beat-signaali joko (a) digitoidaan erillisellä ADC:llä suoraan Zynqin fabricille, tai (b) syötetään AD9361:n RX-porttiin käyttäen AD9361:n **omaa kiinteää sisäistä LO:ta** (ei pyyhkäisyä, ei EXT_LO:ta — pysyy reilusti dokumentoidun 70 MHz–6 GHz alueen sisällä) toisena, matalataajuisena digitointivaiheena. Kumpikin reitti poistaisi taajuuskahdentimen tarpeen ja koko EXT_LO->4 GHz -riskin kokonaan.
+4. **Taajuuden laskeminen ≤4 GHz** säilyy varavaihtoehtona, ei päätetä nyt.
+
 ## Perustelut
 
 ### 1) Chirp-PLL/VCO
@@ -78,12 +109,13 @@ Kaikki suositellut osat (ADF4159, HMC431LP4E, SE5004L, SKY16603-632LF) löytyvä
 
 ## Avoimet kohdat
 
-1. AD9361:n ulkoisen LO:n 2× RF -vaatimus: vahvistettava ensisijaislähteestä (AD9361 Reference Manual, UG-570) ennen skeemaa — vaikuttaa koko taajuussuunnitteluun.
-2. Taajuuskahdentimen (HMC431:n RF-kaistalta AD9361:n LO-kaistalle) tarkka IC-valinta ja tehobudjetti — ADIsimRF-tason budjettilaskenta puuttuu.
+1. ~~AD9361:n ulkoisen LO:n 2× RF -vaatimus: vahvistettava ensisijaislähteestä (AD9361 Reference Manual, UG-570) ennen skeemaa.~~ — **Ratkaistu ja ylitetty 2026-07-15** (ks. "Taajuuskonfliktin ratkaisu"): 2× vahvistui, mutta löytyi vakavampi ongelma — EXT_LO on dokumentoitu vain 70 MHz–4 GHz RF:lle, pohjantähden 5,77 GHz on rajan ulkopuolella. Ei ratkaistu lopullisesti, ks. avoin kohta 7.
+2. Taajuuskahdentimen (HMC431:n RF-kaistalta AD9361:n LO-kaistalle) tarkka IC-valinta ja tehobudjetti — ADIsimRF-tason budjettilaskenta puuttuu. **Huom:** tarpeeton, jos kohdan 7 Forstén-tyylinen diskreetti dechirp-mikseri osoittautuu toteutuskelpoiseksi (ei silloin tarvita EXT_LO:ta eikä taajuuskahdenninta lainkaan).
 3. PA:n jatkuvan käytön (~100 % duty cycle) lämpöbudjetti — SE5004L on karakterisoitu purskekäytölle, ei jatkuvalle chirpille.
 4. TX/RX-antennieristyksen tarkka geometria/etäisyys — vaatii EM-simulaation tai VNA-mittauksen, ei ratkaistavissa pelkällä komponenttivalinnalla.
 5. SDR-korttipäätöksen (`2026-07-15_sdr-kortti-ad9361.md`) kirjaus ulkoisesta LO-injektiosta ei erittele 2× RF -vaatimusta — harkittava lyhyttä täsmennysviittausta sinne kun kohta 1 on vahvistettu ensisijaislähteestä, CLAUDE.md:n periaatteen mukaisesti ("arkkitehtuurimuutokset kirjataan vain pohjantähteen, ei hajalleen" — tämä on tarkennus komponenttivalintaan, ei arkkitehtuurimuutos, joten pysyy tässä muistiossa, mutta ristiviittaus kannattaa lisätä).
-6. Jakoverkon (splitter/coupler + puskurivahvistin) tarkka mitoitus HMC431:n +2 dBm ulostulosta sekä TX-polulle että kahdennetulle LO-polulle.
+6. Jakoverkon (splitter/coupler + puskurivahvistin) tarkka mitoitus HMC431:n +2 dBm ulostulosta sekä TX-polulle että kahdennetulle LO-polulle. **Huom:** tarpeeton samalla ehdolla kuin kohta 2.
+7. **Uusi (2026-07-15):** Forstén-tyylisen diskreetin dechirp-mikserin toteutettavuus tälle kortille (Z7020+AD9361) — chirp-PLL suoraan diskreetin RX-mikserin LO:na AD9361:n EXT_LO:n sijaan, beat-signaali digitoitava joko erillisellä ADC:llä tai AD9361:n RX-porttiin sen omalla kiinteällä sisäisellä LO:lla. Muuttaisi RF-etupään arkkitehtuurin perusteita (kohdat 1, 2, 6 tarpeettomiksi) jos toteutuskelpoinen — oma jatkoselvitys/päätös, ei ratkaistu tässä.
 
 ## Hylätyt vaihtoehdot
 
@@ -96,3 +128,4 @@ Kaikki suositellut osat (ADF4159, HMC431LP4E, SE5004L, SKY16603-632LF) löytyvä
 ## Muutosloki
 
 - **2026-07-15** — Ensimmäinen versio. Perustuu Forsténin blogiin (hforsten.com/homemade-polarimetric-synthetic-aperture-radar-drone.html), AD9361-datasheetiin ja EngineerZone-foorumikeskusteluihin, Skyworks/Analog Devices/TI-datasheeteihin, sekä yhteen akateemiseen C-kaista-polarimetria-SAR-viitteeseen (arXiv:2110.14114).
+- **2026-07-15** — Lisätty osio "Taajuuskonfliktin ratkaisu" (`../tehtavat/2026-07-15_rf-etupaan-taajuuskonflikti.md`): EXT_LO:n toiminnasta yli 4 GHz RF:n ei löytynyt empiiristä näyttöä; SFCW hylätty, koska se toimisi kiskovaiheessa mutta olisi 250–3500× liian hidas drone-vaiheen λ/4-näyteväli-budjetissa; Forstén-arkkitehtuuri (ei AD9361:tä chirp-/LO-polulla lainkaan, täysin diskreetti dechirp-on-receive-mikseri) tunnistettu tärkeimmäksi löydökseksi ja suositeltu jatkoselvityksen kohteeksi. Komponenttivalintoja ei muutettu.
