@@ -278,6 +278,102 @@ mittausdataa on olemassa; validointi omassa simulaattorissa synteettisellä
 DEM:llä on halpa tehdä milloin tahansa vaiheen B jälkeen, mutta ei ole
 kriittinen polku tälle hetkelle.
 
+### Squint-tuki (ei-broadside-geometria)
+
+Lähde: `torchbp/util.py`, `torchbp/csrc/cpu/backproj.cpp`,
+`torchbp/ops/cfbp.py`, `torchbp/ops/ffbp.py`, `examples/
+sar_process_safetensor.py`, `examples/sar_process_safetensor_gpga.py`,
+laaja tekstihaku koko repositoriosta.
+
+**Ei Doppler-keskipiste-käsittelyä lainkaan** — haku
+(`grep -rni "squint\|doppler\|fdc\b"`) koko torchbp-repositoriosta (kaikki
+`.py`/`.cpp`/`.cu`/`.rst`/`.md`/`.ipynb`-tiedostot) ei löydä yhtään `fdc`-
+tai "Doppler centroid" -mainintaa. Tämä ei ole puute vaan seuraus
+algoritmin luonteesta: `backprojection_polar_2d`/`_cart_2d` ja niiden
+tekijöidyt variantit (`ffbp`, `afbp`, `cfbp`) ovat tarkkoja aikatason
+backprojection-algoritmeja, eivät taajuusdomeenin (range-Doppler/
+wavenumber) prosessoreita. Geometria lasketaan suoraan `pos`:sta pikseliin
+(`torchbp/csrc/cpu/backproj.cpp:130-152`, sama kohta kuin yllä DEM-
+osiossa) ilman broadside- tai kapean-Doppler-kaistan approksimaatiota —
+squint ei ole tälle algoritmiperheelle erikseen "korjattava" ongelma
+samalla tavalla kuin Bekarin viitteissä [10]/[20], jotka koskevat
+nimenomaan taajuusdomeeni-tyylisiä menetelmiä.
+
+**Squint on silti eksplisiittinen, ensiluokkainen grid-parametri** —
+`torchbp.util.make_polar_grid(r0, r1, nr, ntheta, theta_limit=1,
+squint=0)` (`torchbp/util.py:781-813`): `squint`-parametri (radiaaneina)
+siirtää `theta_range`:n keskikohtaa: `t0 = clip(sin(squint)-theta_limit,
+-1, 1)`, `t1 = clip(sin(squint)+theta_limit, -1, 1)` (rivit 811-812).
+Tämä on puhdas grid-määrittelyn siirto (mihin päin polaarigridin
+azimuuttiakseli osoittaa), ei Doppler-domeenin estimointia tai korjausta
+datasta.
+
+**Squintin lähde esimerkkiskripteissä on lentoradan tunnettu asenne, ei
+data-vetoinen Doppler-estimaatti** — `examples/sar_process_safetensor.py:
+151-171` (ja vastaava kohta `examples/sar_process_safetensor_gpga.py`:ssä):
+`mean_az = np.angle(np.mean(np.exp(1j * att[:,2])))` eli antennin
+keskimääräinen yaw-kulma mittausdatasta, syötetään suoraan
+`make_polar_grid(..., squint=mean_az)`:iin. Ei Doppler-spektrin analyysia
+(esim. FFT yli azimuutin, keskipisteen etsintä) — squint-kulma tulee
+tunnetusta/mitatusta alustan asennosta, ei datasta pääteltynä.
+
+**`att`/`g`/`g_extent` vaikuttavat vain amplitudiin, ei geometriaan/
+vaiheeseen** — vahvistettu suoraan koodista (`torchbp/csrc/cpu/
+backproj.cpp:185-220`, `if (g != nullptr) { ... }` -lohko): `att`/`g`
+käytetään vasta etäisyyden `d` laskemisen jälkeen, pelkästään
+antennikuvion (`g`) bilineaariseen hakuun elevaatio-/atsimuutti-
+indekseillä (`el_idx`, `az_idx`) — tulos on amplitudipainotus
+(`g0_buf`/`g1_buf`), joka kerrotaan mukaan vasta kertymävaiheessa.
+Geometrinen etäisyys `d` (rivit 130-152) on jo laskettu tätä ennen käyttäen
+vain `pos`:ia ja pikselikoordinaatteja — `att`/`g` eivät vaikuta siihen
+millään tavalla. Tehtävänannon epäily vahvistuu täsmälleen: squintin
+*geometrinen* vaikutus ei tule `att`/`g`-parametreista, vaan se on
+hoidettava grid-tason `squint`-parametrilla (ks. yllä) ja/tai lentoradan
+oikealla `pos`:lla — `att`/`g` hoitavat vain sen, mistä suunnista dataa
+painotetaan antennikuvion mukaan.
+
+**Tekijöidyt variantit (ffbp/cfbp) käsittelevät squintattua geometriaa
+eksplisiittisesti sisäisessä osakuva-yhdistelyssä**, eivät vain periytä
+sitä huomaamatta: `torchbp/ops/cfbp.py:989-1013` (`cfbp`-osakuvien grid-
+askelten mitoitus) laskee suoraan `psi_c`:n (näköviivan suunnan grid-
+akseleihin nähden) ja kommentoi eksplisiittisesti *"For a SQUINTED beam
+the line of sight is at an angle psi_c to the grid axes ... a broadside
+(psi_c = 0) beam recovers the plain azimuth->y, elevation->x split"` — eli
+squint on huomioitu suunnittelutasolla, ei jätetty broadside-oletuksen
+varaan. `torchbp/ops/ffbp.py:634-639` (`_rp_shift`-kommentti) toteaa
+vastaavasti että alirakojen väliset range-siirtymät ovat nollia
+broadsidessa ja kasvavat squintin myötä — tämä on osa normaalia
+merge-matematiikkaa, ei erillinen squint-tila.
+
+**Ei testikattavuutta squintille** — `grep -rln "squint" tests/*.py` ei
+löydä yhtään testiä; `squint`-parametri esiintyy koodikannassa vain
+`torchbp/util.py`:ssä (määrittely) ja kahdessa `examples/`-skriptissä
+(oikean mittausdatan käsittely). Squint-geometria on siis käytännössä
+harjoitettu oikealla mittausdatalla, mutta ei yksikkötestien kattamaa/
+regressiovarmistettua samalla tavalla kuin broadside-tapaus
+(`tests/test_gpga_stripmap.py` yms. ovat nimenomaan broadside-otsikoituja).
+
+**Johtopäätös:** Squintattu ROI-kuvantaminen on käytettävissä torchbp:llä
+sellaisenaan exact-backprojection-algoritmeilla (`bp`/`ffbp`/`afbp`/
+`cfbp`), koska ne eivät koskaan tee broadside- tai kapean-Doppler-kaistan
+approksimaatiota — squint ei ole niille erillinen "tila" vaan pelkkä
+geometrinen tosiasia joka on jo mukana joka pikselin tarkassa
+etäisyyslaskennassa. Käytännön vaatimus: grid täytyy pystyttää
+`squint`-parametrilla (tai suoraan `theta_range`:lla) tunnetun/mitatun
+ROI-osoituskulman mukaan — tämä ei vaadi Doppler-keskipisteen estimointia
+datasta (torchbp:ssä ei ole edes tällaista mekanismia), riittää lentoradan
+ja antennin osoituskulman (`att`/gimbal-kulma) tunteminen. Ainoa avoin
+riski on testikattavuuden puute suurilla squint-kulmilla — ei kiireellinen
+(ROI-patch tulee vasta myöhemmin drone-integraatiossa), mutta kirjataan
+tähän.
+
+**Suositus:** Ei blokkaa mitään nyt — voidaan odottaa drone-integraatioon
+(ROI-spotlight-patch) asti, jolloin todellinen squint-kulma-alue ja
+gimbal/`att`-datan tarkkuus tulevat tietoon. Kun se aika koittaa,
+ensimmäinen käytännön askel on oman testin lisääminen (squintattu
+pistemaali + `make_polar_grid(squint=...)` + `backprojection_polar_2d`/
+`ffbp`), koska torchbp:n oma testisuite ei kata tätä.
+
 ### CPU vs. CUDA -tuki (varmistettu csrc/-rekisteröinneistä, ei oletettu)
 
 torchbp on C++/CUDA-PyTorch-laajennus (`torchbp._C`), ei puhdas
@@ -516,6 +612,17 @@ suunnitellaan ja toteutetaan erikseen tämän jälkeen.
 
 ## Muutosloki
 
+- **2026-07-15** — Squint-tuki-inventaario lisätty (jatko-osa vaihe A:lle,
+  `docs/tehtavat/2026-07-15_dem-squint-inventaario.md` osa 2): vahvistus
+  että torchbp:ssä ei ole Doppler-keskipiste-käsittelyä (koko repo-haku,
+  ei osumia), `make_polar_grid`:n `squint`-parametri on puhdas grid-
+  siirto (`util.py:781-813`), `att`/`g` vaikuttavat vain amplitudiin
+  (`backproj.cpp:185-220`), `cfbp`/`ffbp` huomioivat squintatun geometrian
+  eksplisiittisesti osakuva-yhdistelyssä, ja ettei squintille ole omaa
+  testikattavuutta torchbp:n testisuitessa. Johtopäätös: squintattu
+  ROI-kuvantaminen toimii sellaisenaan exact-backprojection-algoritmeilla,
+  koska ne eivät tee broadside-approksimaatiota. Sama klooni/commit
+  `cf59c15fae5058382ff4e27b38e7a306c36b5a7f`.
 - **2026-07-15** — DEM-backprojection-inventaario lisätty (jatko-osa vaihe
   A:lle, `docs/tehtavat/2026-07-15_dem-squint-inventaario.md` osa 1): `dem`-
   tensorin muoto/koordinaatisto, `docs/source/examples/
