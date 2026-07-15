@@ -102,8 +102,8 @@ Isompi, ulkoinen kohde — edelleen kisko tai turntable, ei vielä lentoa.
 
 - Laskenta-alusta lopullisesti (MPS vs. pilvi vs. Hacklab-NVIDIA)?
 - ~~Oma kortti heti vai evalboard-välivaihe (reitti A vs B)?~~ — ratkaistu 2026-07-15 (oma kortti, ei evalboard-välivaihetta), ks. `paatokset/2026-07-15_dedikoitu-tutkakortti.md`.
-- RF-ketjun lopulliset komponenttivalinnat (chirp-PLL, PA, dechirp-mikseri, ADC) — avoinna, ks. `paatokset/2026-07-15_rf-etupaan-arkkitehtuuri.md`.
-- Zynq-SoC-valinta omalle kortille (nyt kun Z7020-AD9361-SDR-kortti ei ole enää käytössä) — avoinna.
+- RF-ketjun lopulliset komponenttivalinnat (chirp-PLL, PA, dechirp-mikseri, ADC) — enimmäkseen lukittu 2026-07-15, ks. `paatokset/2026-07-15_rf-etupaan-arkkitehtuuri.md` ja `paatokset/2026-07-15_bom-lukitus-2026-koonti.md`. Kaksi osaa yhä avoinna (MGA-25203- ja SKY65404-korvaajat, EOL).
+- ~~Zynq-SoC-valinta omalle kortille (nyt kun Z7020-AD9361-SDR-kortti ei ole enää käytössä) — avoinna.~~ — ratkaistu 2026-07-15 (XC7Z020), ks. `paatokset/2026-07-15_bom-lukitus-2026-koonti.md`.
 - Vaihe 3.5 (auto-alusta) yksityiskohdat: nopeuden mittaus, kiinnitys, turvallisuus — avoinna.
 - Kiskon pituus ja askelväli ensimmäistä olohuonemittausta varten?
 
@@ -113,3 +113,4 @@ Isompi, ulkoinen kohde — edelleen kisko tai turntable, ei vielä lentoa.
 - **2026-07-11** — Siirretty GitHub-repoon `KalleLan/SAR-imaging` (`docs/`). Tiedostonimiin lisätty järjestysprefiksit (00/10/20), ristiviittaukset muutettu suhteellisiksi linkeiksi.
 - **2026-07-15** — Vaihe 1 päivitetty: olemassa oleva Z7020-AD9361-SDR-kortti kattaa digitaalisen selkärangan, reitti B kutistuu RF-etupää-lisäkortiksi. Ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md` (myöhemmin kumottu).
 - **2026-07-15** — Vaihe 1 päivitetty uudelleen: SDR-kortista luovuttu, rakennetaan dedikoitu oma tutkakortti Forsténin `fmcw3`-referenssillä. Uusi Vaihe 3.5 (liikkuva alusta, auto) lisätty. Ks. `paatokset/2026-07-15_dedikoitu-tutkakortti.md`.
+- **2026-07-15** — Avoimet kysymykset päivitetty: Zynq-SoC-valinta ratkaistu (XC7Z020) ja RF-ketjun BOM enimmäkseen lukittu, ks. `paatokset/2026-07-15_bom-lukitus-2026-koonti.md`.
