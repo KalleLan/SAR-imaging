@@ -610,6 +610,20 @@ ajojärjestyksen viimeistely tähän README:hen, tarkemmat PASS-kriteerit ja
 `03_autofocus.py`:n minimi-entropia-autofokus-osa, joka vaatii CUDA:n) —
 suunnitellaan ja toteutetaan erikseen tämän jälkeen.
 
+DEM- ja squint-inventaarin (ks. "DEM-backprojection" ja "Squint-tuki
+(ei-broadside-geometria)" yllä) pienimmät seuraavat askeleet, ei kumpikaan
+kiireellinen eikä toteutettu vielä:
+
+- **DEM:** lisää `sar_sim/point_targets.py`:hen valinnainen z-korkeus per
+  kohde ja testi, joka toistaa `dem_backprojection.ipynb`:n
+  flat-vs-DEM-vertailun `sar_sim`:n omalla data-flow'lla synteettisellä
+  korkeuskartalla (ei tarvitse oikeaa maastodataa). Ajankohtaiseksi tulee
+  kun oikeaa maastodataa aletaan käyttää.
+- **Squint:** lisää oma testi (squintattu pistemaali +
+  `make_polar_grid(squint=...)` + `backprojection_polar_2d`/`ffbp`), koska
+  torchbp:n oma testisuite ei kata squint-geometriaa. Ajankohtaiseksi tulee
+  ROI-spotlight-drone-integraation yhteydessä (`20_START`).
+
 ## Muutosloki
 
 - **2026-07-15** — Squint-tuki-inventaario lisätty (jatko-osa vaihe A:lle,
