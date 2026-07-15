@@ -29,10 +29,9 @@ Halvin ja tärkein askel. Aja kuvanmuodostus + autofokus **simuloidulla tai valm
 
 ## Vaihe 1 — Rautaminimi (FMCW-tutka)
 
-**Päivitetty 2026-07-15, ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md`:** reitit A ja B eivät enää ole kaksi erillistä polkua — olemassa oleva Z7020+AD9361-SDR-kortti kattaa digitaalisen selkärangan molemmille, ja reitti B kutistuu RF-etupää-lisäkortiksi (chirp-PLL, PA, RX-suojaus, polarisaatiokytkentä) joka liittyy tähän korttiin. Perustelut ja avoimet suunnittelukohdat päätösmuistiossa.
+**Päivitetty 2026-07-15, ks. `paatokset/2026-07-15_dedikoitu-tutkakortti.md`:** ei kahta reittiä, ei valmiin SDR-devboardin uusiokäyttöä — rakennetaan yksi dedikoitu, kompakti oma tutkakortti alusta asti, koska drone-alusta vaatii kokonaisintegroidun, kevyen ratkaisun eikä yleiskäyttöisen kortin ja lisämoduulien liimausta. Referenssinä Forsténin oma SAR-todistettu `fmcw3`-toteutus (GitHub `Ttl`): diskreetti chirp-PLL + VCO (ADF4158/HMC431LP4-luokka), dechirp-mikseri jossa kytketty TX-signaali toimii LO:na, erillinen LNA/IF-vahvistin/ADC-ketju. Sama arkkitehtuuri kahdessa muussa riippumattomassa SAR-lähteessä samalla taajuusalueella (MIT Coffee Can Radar, Merlo & Nanzer arXiv:2110.14114) — tunnettu, toistettu ratkaisu, ei tarvitse suunnitella tyhjästä.
 
-- **A) Nopea validointi:** SDR-kortti sellaisenaan (natiivi AD9361-teho) riittää mittaus→data→kuva-ketjun todistamiseen ennen RF-etupään valmistumista.
-- **B) Oma RF-etupää (pohjantähden mukainen):** ~6 GHz, kaista 300–500 MHz, ulkoinen chirp-PLL syötettynä AD9361:n `RX_EXT_LO_IN`/`TX_EXT_LO_IN`-pinneihin, PA n. 24 dB lisävahvistuksella +30 dBm-tavoitteeseen (kortin natiivi TX ~6,5 dBm ei riitä yksin), RX-suojaus, direct-conversion (AD9361:n natiivi ominaisuus).
+Kortti sisältää: Zynq (tai vastaava FPGA+ARM-SoC), RF-ketjun (chirp-PLL, dechirp-mikseri, PA, LNA, RX-suojaus), ADC:n, polarisaatioarkkitehtuurin (2 TX/2 RX, ks. `paatokset/2026-07-15_rf-etupaan-arkkitehtuuri.md`). Komponenttivalinnat samassa päätösmuistiossa lähtökohtana, päivitetään Forstén-referenssin mukaan.
 
 **Huomioitavat sudenkuopat (Forsténin oppeja):**
 - TX-RX-vuoto: >50 dB eristys TX/RX-antennien välillä, muuten vastaanotin kyllästyy.
@@ -64,6 +63,16 @@ Ensimmäinen oikea kuva sisätiloissa, lyhyellä kantamalla, täysin hallituissa
 
 **Onnistumiskriteeri:** tunnetut kohteet erottuvat kuvassa oikeilla paikoillaan. Ketju toimii päästä päähän omalla raudalla ja omalla datalla.
 
+## Vaihe 3.5 — Liikkuva alusta (auto) ennen lentoa
+
+**Uusi idea, kirjattu 2026-07-15, ks. `paatokset/2026-07-15_dedikoitu-tutkakortti.md`.** Aukko kiskon (täysin tunnettu rata) ja dronen (autofokus pakollinen, tuntematon rata) välissä: tutka kiinnitetään auton katolle ja ajetaan sivusuunnassa kohteeseen nähden. Nopeus pidetään vakiona (esim. vakionopeudensäädin), korkeus vaihtelee vain jousituksen verran (muutama senttimetri, ei kymmeniä).
+
+Miksi hyödyllinen välivaihe:
+- Jatkuva, ei-pysähtyvä liike — ensimmäinen testi oikealle PRF-pohjaiselle jatkuvalle hankinnalle (kisko on step-stop, ei testaa tätä).
+- Selvästi pienempi ja ennustettavampi virhemalli kuin drone (ei tuulta, ei kallistusta, nopeus tasainen) — hyvä välitaso autofokuksen stressitestaukseen ennen oikeaa lentodataa.
+
+**Avoinna:** nopeuden/position mittaustapa, kiinnitystapa, turvallisuusnäkökohdat. Tarkennetaan kun vaihe 3 (olohuone) on todistettu.
+
 ## Vaihe 4 — Siirto pihalle
 
 Isompi, ulkoinen kohde — edelleen kisko tai turntable, ei vielä lentoa.
@@ -92,12 +101,15 @@ Isompi, ulkoinen kohde — edelleen kisko tai turntable, ei vielä lentoa.
 ## Avoimet kysymykset
 
 - Laskenta-alusta lopullisesti (MPS vs. pilvi vs. Hacklab-NVIDIA)?
-- ~~Oma kortti heti vai evalboard-välivaihe (reitti A vs B)?~~ — ratkaistu 2026-07-15, ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md`.
-- RF-etupään komponenttivalinnat (chirp-PLL, PA) — avoinna, ks. sama päätösmuistio.
+- ~~Oma kortti heti vai evalboard-välivaihe (reitti A vs B)?~~ — ratkaistu 2026-07-15 (oma kortti, ei evalboard-välivaihetta), ks. `paatokset/2026-07-15_dedikoitu-tutkakortti.md`.
+- RF-ketjun lopulliset komponenttivalinnat (chirp-PLL, PA, dechirp-mikseri, ADC) — avoinna, ks. `paatokset/2026-07-15_rf-etupaan-arkkitehtuuri.md`.
+- Zynq-SoC-valinta omalle kortille (nyt kun Z7020-AD9361-SDR-kortti ei ole enää käytössä) — avoinna.
+- Vaihe 3.5 (auto-alusta) yksityiskohdat: nopeuden mittaus, kiinnitys, turvallisuus — avoinna.
 - Kiskon pituus ja askelväli ensimmäistä olohuonemittausta varten?
 
 ## Muutosloki
 
 - **2026-07-11** — Ensimmäinen versio. Vaiheistus 0→4 (ohjelmisto → rauta → kisko → olohuone → piha) kirjattu. Laskenta-alusta merkitty avoimeksi kysymykseksi ratkaistavaksi vaiheessa 0.
 - **2026-07-11** — Siirretty GitHub-repoon `KalleLan/SAR-imaging` (`docs/`). Tiedostonimiin lisätty järjestysprefiksit (00/10/20), ristiviittaukset muutettu suhteellisiksi linkeiksi.
-- **2026-07-15** — Vaihe 1 päivitetty: olemassa oleva Z7020-AD9361-SDR-kortti kattaa digitaalisen selkärangan, reitti B kutistuu RF-etupää-lisäkortiksi. Ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md`.
+- **2026-07-15** — Vaihe 1 päivitetty: olemassa oleva Z7020-AD9361-SDR-kortti kattaa digitaalisen selkärangan, reitti B kutistuu RF-etupää-lisäkortiksi. Ks. `paatokset/2026-07-15_sdr-kortti-ad9361.md` (myöhemmin kumottu).
+- **2026-07-15** — Vaihe 1 päivitetty uudelleen: SDR-kortista luovuttu, rakennetaan dedikoitu oma tutkakortti Forsténin `fmcw3`-referenssillä. Uusi Vaihe 3.5 (liikkuva alusta, auto) lisätty. Ks. `paatokset/2026-07-15_dedikoitu-tutkakortti.md`.

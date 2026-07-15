@@ -1,10 +1,12 @@
 # Päätös: RF-etupään komponenttiarkkitehtuuri (chirp-PLL, PA, RX-suojaus, polarisaatio)
 
+> **Scope laajennettu 2026-07-15:** kirjoitushetkellä tämä oli "RF-etupää-lisäkortti" SDR-devboardin päälle. `2026-07-15_dedikoitu-tutkakortti.md` kumosi SDR-kortin käytön — tässä tehdyt komponenttihavainnot (chirp-PLL, PA, RX-suojaus, polarisaatio) ovat silti edelleen voimassa lähtökohtana koko tutkakortille, ei enää vain lisäkortille.
+
 | | |
 |---|---|
 | **Tyyppi** | Päätösmuistio |
 | **Päätetty** | 2026-07-15 |
-| **Liittyy** | `2026-07-15_sdr-kortti-ad9361.md` (SDR-radiokortti), `10_START_sdr_rail-SAR.md` (Vaihe 1 — Rautaminimi) |
+| **Liittyy** | `2026-07-15_dedikoitu-tutkakortti.md` (oma tutkakortti), `2026-07-15_sdr-kortti-ad9361.md` (kumottu), `10_START_sdr_rail-SAR.md` (Vaihe 1 — Rautaminimi) |
 
 ---
 
