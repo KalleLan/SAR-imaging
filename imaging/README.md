@@ -191,6 +191,93 @@ tehdä range-compression (`torch.fft.rfft` + RVP-korjaus, kuten
 backprojektioon. Tämä lisätään vaiheen B suunnitelmaan eksplisiittisesti,
 koska alkuperäinen tehtävänanto ei erikseen maininnut tätä välivaihetta.
 
+### DEM-backprojection
+
+Lähde: `docs/source/examples/dem_backprojection.ipynb` (luettu kokonaan,
+sama torchbp-klooni/commit kuin vaihe A), `torchbp/ops/backproj.py`,
+`torchbp/csrc/cpu/backproj.cpp`, `torchbp/autofocus.py`.
+
+**Notebookin sisältö:** rakentaa synteettisen 15 m korkean mäen ("smooth
+hill") ja 5x5-ruudukon pistemaaleja mäen pinnalla, näyttää että ilman
+`dem`-argumenttia korkeat kohteet siirtyvät kuvassa kohti tutkaa
+(layover-tyyppinen virhe, "flat-earth image ... warped"), ja että `dem`:n
+kanssa `ffbp`/`backprojection_polar_2d` fokusoivat kaikki 25 kohdetta
+oikeisiin koordinaatteihin. Vertaa myös suoraa `backprojection_polar_2d`:tä
+ja `ffbp`:tä samalla `dem`:llä keskenään (pieni jäännösvirhe, `relerr`).
+Notebookin lopussa mainitaan lyhyesti että myös `gpga`/`gpga_tde`
+hyväksyvät `dem`-argumentin. **Notebookissa ei ole esimerkkiä minimi-
+entropia-autofokuksen ja DEM:n yhdistämisestä** — ainoastaan suora
+kuvanmuodostus DEM:n kanssa, ei autofokusta lainkaan.
+
+**`dem`-tensorin muoto ja koordinaatisto** (`torchbp/ops/backproj.py:1090-
+1096`, notebookin markdown-solu): `[dem_nr, dem_ntheta]`, `float32`.
+Kattaa saman r/theta-alueen kuin kuvan grid, voi olla karkeampi kuin
+kuvagrid — arvot bilineaarisesti interpoloidaan per pikseli. Arvot ovat
+pikselin z-koordinaatteja **samassa koordinaatistossa kuin `pos`** (sama
+z="ylös"-konventio joka on jo dokumentoitu yllä "PolarGrid-olion rakenne"
+-osiossa). DEM-näyte `[i, j]` vastaa solun alkukoordinaattia
+`r = r0 + i*(r1-r0)/dem_nr`, `theta = t0 + j*(t1-t0)/dem_ntheta` (ei
+solun keskipistettä). `torchbp.util.dem_to_polar` (`torchbp/util.py:820-
+886`) resamplaa karteesisen DEM:n (esim. GeoTIFF-pohjaisen) tälle
+polaarigridille `F.grid_sample`-bilineaarilla.
+
+**Geometria ei ole approksimaatio** (`torchbp/csrc/cpu/backproj.cpp:130-
+152`): DEM-tapauksessa pikselin etäisyys tutkaan lasketaan
+`d² = r²+|pos|² + z² - 2*(x*pos_x + y*pos_y + z*pos_z)` — täsmälleen sama
+kaava kuin flat-earth-tapaus (`d² = r²+|pos|² - 2*(x*pos_x + y*pos_y)`)
+täydennettynä z-termeillä, ei kevennetty/linearisoitu malli.
+
+**Gradientti/autofokus-rajoitus vahvistuu täsmälleen** README:hen jo
+kirjatun huomion mukaisesti: `torchbp/ops/backproj.py:1799-1804`
+(`_backward_polar_2d`) sisältää eksplisiittisen
+`if ctx.saved[25] is not None: raise ValueError("gradient with dem not
+supported")` — tämä on tarkoituksellinen `raise`, ei vain
+dokumentoimaton puute. `minimum_entropy_grad_autofocus`-funktiolla
+(`torchbp/autofocus.py:2551-2736`) **ei ole edes `dem`-parametria
+signatuurissa**: se kutsuu kuvanmuodostusfunktiota aina ilman `dem`:ää
+(rivi 2689: `f(data, grid, fc, r_res, pos_centered, d0,
+data_fmod=data_fmod)`).
+
+**`gpga`/`gpga_tde` sen sijaan tukevat `dem`:ää suoraan**, koska ne eivät
+käytä backprop-gradienttia vaan phase-gradient-estimointia:
+`torchbp/autofocus.py:708-717` (docstring) sanoo eksplisiittisesti *"Used
+both for the image formation and for the autofocus target positions"*,
+toteutus `torchbp/autofocus.py:738-741,765-767`. Rajoitus: vain
+polaarigridi + algoritmi `"bp"` tai `"ffbp"` (`autofocus.py:714`).
+
+**Työjärjestys — ei yhtä virallista kaavaa, kaksi erillistä polkua:**
+1. Minimi-entropia-gradienttiautofokus ei voi käyttää `dem`:ää lainkaan.
+   Jos tätä menetelmää halutaan yhdistää DEM:ään, ainoa mahdollinen
+   järjestys on tehtävänannon olettama "autofokusoi ensin tasomaisella
+   oletuksella (`dem=None`) → aja lopullinen kuvanmuodostus korjatulla
+   `pos`:lla ja oikealla `dem`:llä" — **mutta tätä ei dokumentoida eikä
+   demonstroida torchbp:n lähdekoodissa tai notebookeissa missään**, se
+   on oma päätelmämme rajoituksesta, ei löydetty resepti.
+2. `gpga`/`gpga_tde` tukevat `dem`:ää suoraan yhdessä ajossa, ei
+   kaksivaiheista järjestystä tarvita. Näistä juuri `gpga`-perhe toimii
+   CPU:lla (jo dokumentoitu alla "CPU vs. CUDA -tuki" -osiossa), kun taas
+   minimi-entropia vaatii CUDA:n. Käytännön seuraus: jos DEM-autofokus
+   halutaan CPU:lla (Macilla), `gpga`/`gpga_tde` on ainoa toimiva reitti.
+
+**Käytännön arvio validointitarpeesta:** `torchbp.util.generate_fmcw_data`
+(jo dokumentoitu yllä) ottaa 3D-`target_pos`:n suoraan — korkeusvaihtelun
+lisääminen omaan simulaattoriin ei vaadi mitään muutoksia itse
+torchbp-kutsuun, tarvitsee vain kohteille nollasta poikkeavan z:n (sama
+malli kuin notebookin `terrain()`-funktio ja Bekarin kappale IV:n koestus,
+jossa osa kohteista on korotettu). Oikeaa avointa korkeusdata-aineistoa ei
+tarvita validoinnin ensimmäiseen vaiheeseen — synteettinen korkeuskartta
+(notebookin `terrain()`-tyylinen Gaussin-mäki) riittää todentamaan että
+DEM korjaa defokusoinnin omassa simulaattorissa. Ehdotettu pienin seuraava
+askel (ei toteuteta tässä tehtävässä): lisää `sar_sim/point_targets.py`:hen
+valinnainen z-korkeus per kohde ja testi, joka toistaa notebookin
+flat-vs-DEM-vertailun `sar_sim`:n omalla data-flow'lla — kirjataan
+"Seuraavat vaiheet" -osioon.
+
+**Suositus:** Ei blokkaa mitään nyt. Oikea maastodata tarvitaan vasta kun
+mittausdataa on olemassa; validointi omassa simulaattorissa synteettisellä
+DEM:llä on halpa tehdä milloin tahansa vaiheen B jälkeen, mutta ei ole
+kriittinen polku tälle hetkelle.
+
 ### CPU vs. CUDA -tuki (varmistettu csrc/-rekisteröinneistä, ei oletettu)
 
 torchbp on C++/CUDA-PyTorch-laajennus (`torchbp._C`), ei puhdas
@@ -429,6 +516,15 @@ suunnitellaan ja toteutetaan erikseen tämän jälkeen.
 
 ## Muutosloki
 
+- **2026-07-15** — DEM-backprojection-inventaario lisätty (jatko-osa vaihe
+  A:lle, `docs/tehtavat/2026-07-15_dem-squint-inventaario.md` osa 1): `dem`-
+  tensorin muoto/koordinaatisto, `docs/source/examples/
+  dem_backprojection.ipynb`:n sisältö, vahvistus että backprop-gradientti
+  `dem`:n läpi ei ole tuettu (`backproj.py:1799-1804`,
+  `minimum_entropy_grad_autofocus`:lla ei edes `dem`-parametria), ja että
+  `gpga`/`gpga_tde` tukevat `dem`:ää suoraan sekä kuvanmuodostukseen että
+  autofokuksen kohteiden sijaintiin. Sama klooni/commit
+  `cf59c15fae5058382ff4e27b38e7a306c36b5a7f`.
 - **2026-07-15** — Käytännön Mac-toolchain-resepti täsmennetty täydellä
   toistettavuudella: täsmäversiot (Homebrew `llvm` 22.1.8, `python@3.12`
   3.12.13_4), asennus-/käännöskomennot, kolmen epäonnistuneen yrityksen
